@@ -7,7 +7,7 @@ title: "MV-AFA: Interpretable Topology-Aware Multi-View Adaptive Fusion Attentio
 short_title: "MV-AFA"
 
 # TODO: replace with your published Docker image after `docker push`
-image: "docker.io/YOUR_DOCKERHUB_USERNAME/mv-afa-szcore:v1.0.0"
+image: "docker.io/mellow99/mv-afa-szcore:v1.0.0"
 
 version: "1.0.0"
 date_released: "2026-06-12"
@@ -15,7 +15,7 @@ date_released: "2026-06-12"
 authors:
   - given_names: "Yuhang"
     family_names: "Guo"
-    affiliation: "YOUR INSTITUTION"
+    affiliation: "Khalifa University"
     email: "yuhang5259@gmail.com"
 
 license: "MIT"
