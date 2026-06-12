@@ -21,7 +21,7 @@ authors:
 license: "MIT"
 
 # TODO: update with actual GitHub repo URL after pushing code
-repository: "https://github.com/YOUR_GITHUB_USERNAME/mv-afa-szcore"
+repository: "https://github.com/yuhangYH/mv-afa-szcore"
 
 abstract: >-
   MV-AFA (Multi-View Adaptive Fusion Attention) is an EEG seizure detection
