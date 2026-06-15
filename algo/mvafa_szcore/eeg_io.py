@@ -1,12 +1,17 @@
 """EDF loading and channel alignment for SzCORE inference.
 
-SzCORE standardises to 19 standard 10-20 channels. CHB-MIT was recorded as a
-longitudinal bipolar montage (18 pairs). We derive the bipolar pairs
-algebraically from the 19 referential channels so the model sees exactly the
-same montage it was trained on.
+SzCORE standardises to 19 standard 10-20 referential channels. MV-AFA was
+trained on the CHB-MIT longitudinal bipolar montage (18 pairs), so we derive
+those 18 bipolar signals algebraically from the referential channels.
 
-Channel name aliases are normalised (T7=T3, P7=T5, T8=T4, P8=T6) to handle
-older and newer 10-20 labelling conventions.
+CRITICAL — consistency with training:
+The training pipeline reads signals with ``raw.get_data(picks)`` directly, i.e.
+MNE's default Volt scaling and **no filtering / no rescaling** (only a per-window
+z-score is applied later inside feature extraction). To keep inference features
+on the same scale the model was trained on, we therefore:
+  * do NOT band-pass / notch filter,
+  * do NOT multiply by 1e6 (keep MNE Volts),
+  * only resample to 256 Hz when the input rate differs (amplitude-preserving).
 """
 from __future__ import annotations
 
@@ -17,8 +22,8 @@ from typing import Tuple
 import numpy as np
 import mne
 
-# The 18 bipolar pairs as stored in the CHB-MIT corpus (presets.py).
-# Each tuple is (anode, cathode) in canonical upper-case form.
+# The 18 bipolar pairs, in the exact order used during training
+# (CHB_MIT_TARGET_CHANNELS).
 BIPOLAR_PAIRS = [
     ("FP1", "F7"),  ("F7",  "T7"),  ("T7",  "P7"),  ("P7",  "O1"),
     ("FP1", "F3"),  ("F3",  "C3"),  ("C3",  "P3"),  ("P3",  "O1"),
@@ -33,51 +38,60 @@ _ALIASES = {
     "T5": "P7", "T6": "P8",
 }
 
-_NOTCH_HZ  = 60.0
-_L_FREQ    = 0.5
-_H_FREQ    = 40.0
 _TARGET_SF = 256.0
 
 
 def _canonical(name: str) -> str:
     n = name.upper().strip()
     n = re.sub(r"^EEG\s*", "", n)
+    n = re.sub(r"^POL\s*", "", n)
     n = n.replace("-REF", "").replace("-LE", "").replace(" ", "")
+    # Strip a trailing duplicate index, e.g. CHB-MIT "T8-P8-0" -> "T8-P8".
+    n = re.sub(r"-\d+$", "", n)
     return _ALIASES.get(n, n)
 
 
 def load_edf_as_bipolar(edf_path: str) -> Tuple[np.ndarray, float]:
-    """Load an EDF and return a (18, T) float32 bipolar array at 256 Hz.
+    """Load an EDF and return an (18, T) float32 bipolar array at 256 Hz.
 
-    Returns
-    -------
-    data  : np.ndarray shape (18, T) in µV
-    sfreq : float — always 256.0
+    Signals are in MNE Volts (matching training); no filtering is applied.
     """
     raw = mne.io.read_raw_edf(edf_path, preload=True, verbose="ERROR")
 
-    nyq = raw.info["sfreq"] / 2.0
-    if _NOTCH_HZ < nyq:
-        raw.notch_filter(_NOTCH_HZ, verbose="ERROR")
-    raw.filter(_L_FREQ, _H_FREQ, verbose="ERROR")
-
+    # Resample only if needed (amplitude-preserving; training assumed 256 Hz).
     if abs(raw.info["sfreq"] - _TARGET_SF) > 1e-3:
         raw.resample(_TARGET_SF, verbose="ERROR")
 
-    ch_map = {_canonical(ch): i for i, ch in enumerate(raw.ch_names)}
-    eeg = raw.get_data() * 1e6          # V -> µV
+    # Keep the FIRST occurrence of each canonical name (matches training).
+    ch_map = {}
+    for i, ch in enumerate(raw.ch_names):
+        key = _canonical(ch)
+        if key not in ch_map:
+            ch_map[key] = i
+    sig = raw.get_data()                 # Volts, no rescaling (matches training)
 
-    out = np.zeros((18, eeg.shape[1]), dtype=np.float32)
+    out = np.zeros((18, sig.shape[1]), dtype=np.float32)
+    missing = []
     for k, (anode, cathode) in enumerate(BIPOLAR_PAIRS):
         a_idx = ch_map.get(anode)
         c_idx = ch_map.get(cathode)
-        if a_idx is None or c_idx is None:
-            warnings.warn(
-                f"Bipolar pair {anode}-{cathode}: missing electrode(s). "
-                f"Available: {sorted(ch_map)}. Filled with zeros.",
-                stacklevel=2,
-            )
+        if a_idx is not None and c_idx is not None:
+            # SzCORE referential input: derive the bipolar signal.
+            out[k] = sig[a_idx] - sig[c_idx]
+            continue
+        # Fallback: the recording may already be in bipolar montage with a
+        # channel literally named e.g. "FP1-F7" (as in CHB-MIT).
+        direct = ch_map.get(f"{anode}-{cathode}")
+        if direct is not None:
+            out[k] = sig[direct]
         else:
-            out[k] = eeg[a_idx] - eeg[c_idx]
+            missing.append(f"{anode}-{cathode}")
+
+    if missing:
+        warnings.warn(
+            f"{len(missing)} bipolar channel(s) unavailable and filled with "
+            f"zeros: {missing}. Available: {sorted(ch_map)}.",
+            stacklevel=2,
+        )
 
     return out, _TARGET_SF
