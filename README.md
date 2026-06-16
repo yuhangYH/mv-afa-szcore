@@ -2,12 +2,26 @@
 
 Multi-View Adaptive Fusion Attention (MV-AFA) seizure detection algorithm, packaged for the [SzCORE benchmark](https://epilepsybenchmarks.com).
 
+**Current release: v1.1.0** — cross-subject model trained on all 24 CHB-MIT subjects.
+
+- 🐳 Docker: `docker.io/mellow99/mv-afa-szcore:v1.1.0`
+- 🔀 SzCORE PR: [esl-epfl/szcore#89](https://github.com/esl-epfl/szcore/pull/89)
+
+## Method
+
+A 2-second EEG window is encoded by four complementary branches and fused by a gated mixture (~1.75 M parameters):
+
+1. **Temporal** — multi-scale patch Transformer (patch sizes 8/16/32)
+2. **Frequency** — multi-scale 2-D CNN on Welch PSD maps
+3. **Statistical** — 40-D hand-crafted features (Hjorth, entropy, line-length, ZCR, …)
+4. **Topological (TDA)** — 12-D features from Vietoris–Rips persistent homology (H0 + H1)
+
 ## Package structure
 
 ```
 mv_afa_szcore/
 ├── Dockerfile
-├── mv_afa.yaml              # SzCORE submission descriptor (edit before submitting)
+├── mv_afa.yaml              # SzCORE submission descriptor
 ├── README.md
 ├── scripts/
 │   └── prepare_weights.py   # Helper to copy new weights into the package
@@ -19,80 +33,72 @@ mv_afa_szcore/
         ├── model.py         # MultiViewSeizureNet architecture
         ├── features.py      # Statistical / TDA / frequency extraction
         ├── eeg_io.py        # EDF loading + 19→18 bipolar remontage
-        ├── inference.py     # Sliding-window inference + event merging
+        ├── inference.py     # Sliding-window inference + smoothed event detection
         └── weights/
-            └── best_model.pt
+            └── best_model.pt   # cross-subject (all 24 CHB-MIT subjects)
 ```
 
-## Step 1 — (Optional) Train a cross-subject model
-
-The bundled `weights/best_model.pt` is trained on **chb01 only** (single subject).
-For proper cross-dataset performance on SzCORE, train on all subjects first:
+## Build & test the Docker image
 
 ```bash
-# inside the MV-AFA training directory
-python eeg_chbmit_multiview_gated.py  # edit subject_id to cover all subjects
+docker build -t mellow99/mv-afa-szcore:v1.1.0 .
 
-# then replace weights:
-python scripts/prepare_weights.py \
-    --weights-src /path/to/cross_subject_training/best_model.pt
-```
-
-## Step 2 — Build the Docker image
-
-```bash
-cd /Users/yuhang/Downloads/mv_afa_szcore
-docker build -t YOUR_DOCKERHUB_USERNAME/mv-afa-szcore:v1.0.0 .
-```
-
-Test locally with any EDF file:
-
-```bash
+# Test on any EDF file:
 docker run --rm \
   -v /path/to/edf_dir:/data \
   -v /tmp/szcore_out:/output \
   -e INPUT=sample.edf \
   -e OUTPUT=sample.tsv \
-  YOUR_DOCKERHUB_USERNAME/mv-afa-szcore:v1.0.0
+  mellow99/mv-afa-szcore:v1.1.0
 cat /tmp/szcore_out/sample.tsv
 ```
 
 Expected output TSV (BIDS format):
 ```
 onset   duration   eventType   confidence   channels   dateTime   recordingDuration
-123.0   45.0       sz          n/a          n/a        2010-...   3600.0
+444.0   74.0       sz          n/a          n/a        2059-...   3600.0
 ```
 
-## Step 3 — Push to Docker Hub
+## Push & submit
 
 ```bash
 docker login
-docker push YOUR_DOCKERHUB_USERNAME/mv-afa-szcore:v1.0.0
+docker push mellow99/mv-afa-szcore:v1.1.0
+
+# Submit: fork esl-epfl/szcore, copy mv_afa.yaml to algorithms/, open a PR.
+# SzCORE CI then runs the Docker image automatically.
 ```
 
-## Step 4 — Update mv_afa.yaml
+## Retraining (cross-subject)
 
-Edit `mv_afa.yaml` and replace:
-- `YOUR_DOCKERHUB_USERNAME` → your actual Docker Hub username
-- `YOUR_GITHUB_USERNAME` → your actual GitHub username
-- `YOUR INSTITUTION` → your affiliation
-
-## Step 5 — Submit to SzCORE
+The bundled weights are already trained cross-subject on all 24 CHB-MIT subjects.
+To retrain (e.g. on more data) and refresh the weights:
 
 ```bash
-# Fork the SzCORE repo on GitHub, then:
-git clone https://github.com/YOUR_GITHUB_USERNAME/szcore
-cp mv_afa.yaml szcore/algorithms/mv_afa.yaml
-cd szcore
-git checkout -b add-mv-afa
-git add algorithms/mv_afa.yaml
-git commit -m "Add MV-AFA seizure detection algorithm"
-git push origin add-mv-afa
-# Open a Pull Request → SzCORE CI runs Docker image automatically
+# Train (window 2 s / step 4 s, TDA folds 5, neg:pos 4:1):
+MVAFA_NEG_POS_RATIO=4.0 python train_cross_subject.py \
+    --subject_id all --data_dir <chbmit_root> \
+    --output_dir ./run --epochs 30 \
+    --balance_method undersample --precompute_features --tda_folds 5
+
+# Swap weights into the package, then rebuild the image:
+python scripts/prepare_weights.py --weights-src ./run/best_model.pt
 ```
+
+## Validated performance
+
+On ~63 h of continuous CHB-MIT recordings (5 subjects), deployed configuration:
+
+| Metric | Value |
+|--------|-------|
+| Cross-subject AUROC (window-level) | 0.936 |
+| Event sensitivity | 21/25 = 84% |
+| False alarms | ~0.8 / 24 h |
 
 ## Notes
 
-- **Channel remontage**: SzCORE standardizes to 19 standard 10-20 channels. The inference code automatically derives the 18 CHB-MIT bipolar pairs algebraically.
-- **Inference parameters**: 2 s windows, 1 s step, threshold=0.54, min seizure duration=5 s, merge gap=30 s.
-- **Known limitation**: Current weights are single-subject (chb01). Cross-subject generalization will be limited until a cross-subject model is trained.
+- **Channel remontage**: SzCORE standardizes to 19 standard 10-20 channels; the inference code derives the 18 CHB-MIT bipolar pairs algebraically. It also falls back to bipolar channel names (e.g. `FP1-F7`) when given an already-bipolar recording.
+- **Signal scaling**: signals are read in MNE Volts with **no extra rescaling and no filtering**, matching the training pipeline exactly (per-window z-scoring is applied inside feature extraction).
+- **Inference parameters**: 2 s windows, 4 s step, TDA folds = 5.
+- **Post-processing**: per-window probabilities are smoothed over 7 windows (persistence filter), thresholded at 0.95, then filtered by minimum duration 10 s and merge gap 5 s. This brings false alarms from ~500/24 h down to < 1/24 h while keeping high event sensitivity.
+- **Weights**: cross-subject, trained on all 24 CHB-MIT subjects.
