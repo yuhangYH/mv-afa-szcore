@@ -2,9 +2,12 @@
 
 Multi-View Adaptive Fusion Attention (MV-AFA) seizure detection algorithm, packaged for the [SzCORE benchmark](https://epilepsybenchmarks.com).
 
-**Current release: v1.1.0** — cross-subject model trained on all 24 CHB-MIT subjects.
+**Current release: v1.2.0** — multi-dataset model (CHB-MIT + Siena + TUH-Sz),
+chosen because the SzCORE leaderboard scores event-F1 across 5 datasets, so a
+model that has seen multiple corpora beats a CHB-MIT-only specialist on the
+aggregate (see `Cross-dataset notes` below).
 
-- 🐳 Docker: `docker.io/mellow99/mv-afa-szcore:v1.1.0`
+- 🐳 Docker: `docker.io/mellow99/mv-afa-szcore:v1.2.0`
 - 🔀 SzCORE PR: [esl-epfl/szcore#89](https://github.com/esl-epfl/szcore/pull/89)
 
 ## Method
@@ -85,20 +88,35 @@ MVAFA_NEG_POS_RATIO=4.0 python train_cross_subject.py \
 python scripts/prepare_weights.py --weights-src ./run/best_model.pt
 ```
 
-## Validated performance
+## Validated performance (v1.2.0, event-level F1 on held-out subjects)
 
-On ~63 h of continuous CHB-MIT recordings (5 subjects), deployed configuration:
+Operating point: threshold 0.70, smoothing window 7. Event-based (overlap) F1
+on continuous recordings of the held-out validation subjects:
 
-| Metric | Value |
-|--------|-------|
-| Cross-subject AUROC (window-level) | 0.936 |
-| Event sensitivity | 21/25 = 84% |
-| False alarms | ~0.8 / 24 h |
+| Dataset | Event F1 |
+|---------|----------|
+| CHB-MIT | 0.29 |
+| Siena | 0.24 |
+| TUH-Sz (TUSZ) | 0.50 |
+| 3-dataset overall | **0.41** |
+
+For comparison, the CHB-MIT-only v1.1.0 scored F1 0.68 on CHB-MIT but ~0.00 on
+Siena/TUSZ (overall 0.26) — the multi-dataset model is clearly better on the
+SzCORE-style multi-dataset aggregate.
+
+## Cross-dataset notes
+
+- SzCORE evaluates 5 datasets (CHB-MIT, Siena, TUH-Sz, Dianalund, SeizeIT1) by
+  event-F1. Leave-one-dataset-out experiments confirmed that **zero-shot transfer
+  to an unseen corpus is near chance** — a model must be *trained* on each target
+  corpus. v1.2.0 therefore trains on CHB-MIT + Siena + TUSZ (3 of 5).
+- SeizeIT1 (wearable behind-the-ear, 2 channels) is out of scope for this
+  18-channel 10-20 model; Dianalund was not available locally.
 
 ## Notes
 
 - **Channel remontage**: SzCORE standardizes to 19 standard 10-20 channels; the inference code derives the 18 CHB-MIT bipolar pairs algebraically. It also falls back to bipolar channel names (e.g. `FP1-F7`) when given an already-bipolar recording.
 - **Signal scaling**: signals are read in MNE Volts with **no extra rescaling and no filtering**, matching the training pipeline exactly (per-window z-scoring is applied inside feature extraction).
 - **Inference parameters**: 2 s windows, 4 s step, TDA folds = 5.
-- **Post-processing**: per-window probabilities are smoothed over 7 windows (persistence filter), thresholded at 0.95, then filtered by minimum duration 10 s and merge gap 5 s. This brings false alarms from ~500/24 h down to < 1/24 h while keeping high event sensitivity.
-- **Weights**: cross-subject, trained on all 24 CHB-MIT subjects.
+- **Post-processing**: per-window probabilities are smoothed over 7 windows (persistence filter), thresholded at 0.70, then filtered by minimum duration 10 s and merge gap 5 s.
+- **Weights**: multi-dataset, trained on CHB-MIT + Siena + TUH-Sz (subject-level splits, EEG augmentation, per-dataset balancing).

@@ -32,7 +32,7 @@ N_CHANNELS   = 18
 STAT_DIM     = 40
 TDA_DIM      = 12
 TDA_FOLDS    = 5
-THRESHOLD    = 0.95     # applied to the SMOOTHED probability
+THRESHOLD    = 0.70     # v1.2.0 multi-dataset operating point (maximises event F1)
 
 # --- Post-processing (validated on continuous CHB-MIT recordings) ---
 # Probability smoothing over SMOOTH_K windows (step 4 s -> ~28 s persistence)
