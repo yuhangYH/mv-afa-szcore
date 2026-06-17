@@ -39,13 +39,13 @@ mv_afa_szcore/
         ├── eeg_io.py        # EDF loading + 19→18 bipolar remontage
         ├── inference.py     # Sliding-window inference + smoothed event detection
         └── weights/
-            └── best_model.pt   # cross-subject (all 24 CHB-MIT subjects)
+            └── best_model.pt   # multi-dataset (CHB-MIT + Siena + TUSZ)
 ```
 
 ## Build & test the Docker image
 
 ```bash
-docker build -t mellow99/mv-afa-szcore:v1.1.0 .
+docker build -t mellow99/mv-afa-szcore:v1.3.0 .
 
 # Test on any EDF file:
 docker run --rm \
@@ -53,7 +53,7 @@ docker run --rm \
   -v /tmp/szcore_out:/output \
   -e INPUT=sample.edf \
   -e OUTPUT=sample.tsv \
-  mellow99/mv-afa-szcore:v1.1.0
+  mellow99/mv-afa-szcore:v1.3.0
 cat /tmp/szcore_out/sample.tsv
 ```
 
@@ -67,7 +67,7 @@ onset   duration   eventType   confidence   channels   dateTime   recordingDurat
 
 ```bash
 docker login
-docker push mellow99/mv-afa-szcore:v1.1.0
+docker push mellow99/mv-afa-szcore:v1.3.0
 
 # Submit: fork esl-epfl/szcore, copy mv_afa.yaml to algorithms/, open a PR.
 # SzCORE CI then runs the Docker image automatically.
@@ -108,11 +108,14 @@ v1.1.0, which scored ~0.00 on Siena/TUSZ.)
 ## Cross-dataset notes
 
 - SzCORE evaluates 5 datasets (CHB-MIT, Siena, TUH-Sz, Dianalund, SeizeIT1) by
-  event-F1. Leave-one-dataset-out experiments confirmed that **zero-shot transfer
-  to an unseen corpus is near chance** — a model must be *trained* on each target
-  corpus. v1.2.0 therefore trains on CHB-MIT + Siena + TUSZ (3 of 5).
-- SeizeIT1 (wearable behind-the-ear, 2 channels) is out of scope for this
-  18-channel 10-20 model; Dianalund was not available locally.
+  event-F1, all standardized to the 19-channel 10-20 montage. Leave-one-dataset-out
+  experiments confirmed that **zero-shot transfer to an unseen corpus is near
+  chance** — a model must be *trained* on each target corpus. This model trains on
+  CHB-MIT + Siena + TUSZ (3 of 5).
+- **Dianalund** is a private held-out benchmark (not downloadable). **SeizeIT1**
+  is standardized to scalp 10-20 by SzCORE (so this model is architecturally
+  compatible) but its access is closed (ethical approval expired), so it cannot be
+  added to training. Both are therefore evaluated zero-shot (~chance) by this model.
 
 ## Notes
 
