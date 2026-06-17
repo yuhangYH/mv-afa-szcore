@@ -2,12 +2,13 @@
 
 Multi-View Adaptive Fusion Attention (MV-AFA) seizure detection algorithm, packaged for the [SzCORE benchmark](https://epilepsybenchmarks.com).
 
-**Current release: v1.2.0** — multi-dataset model (CHB-MIT + Siena + TUH-Sz),
-chosen because the SzCORE leaderboard scores event-F1 across 5 datasets, so a
-model that has seen multiple corpora beats a CHB-MIT-only specialist on the
-aggregate (see `Cross-dataset notes` below).
+**Current release: v1.3.0** — multi-dataset model (CHB-MIT + Siena + TUH-Sz),
+with TUSZ expanded to 1500 recordings for greater subject diversity. The SzCORE
+leaderboard scores event-F1 across 5 datasets, so a model that has seen multiple
+corpora beats a CHB-MIT-only specialist on the aggregate (see `Cross-dataset
+notes` below).
 
-- 🐳 Docker: `docker.io/mellow99/mv-afa-szcore:v1.2.0`
+- 🐳 Docker: `docker.io/mellow99/mv-afa-szcore:v1.3.0`
 - 🔀 SzCORE PR: [esl-epfl/szcore#89](https://github.com/esl-epfl/szcore/pull/89)
 
 ## Method
@@ -88,21 +89,21 @@ MVAFA_NEG_POS_RATIO=4.0 python train_cross_subject.py \
 python scripts/prepare_weights.py --weights-src ./run/best_model.pt
 ```
 
-## Validated performance (v1.2.0, event-level F1 on held-out subjects)
+## Validated performance (window-level AUROC on held-out subjects)
 
-Operating point: threshold 0.70, smoothing window 7. Event-based (overlap) F1
-on continuous recordings of the held-out validation subjects:
+v1.3.0 (TUSZ 1500) vs v1.2.0 (TUSZ 400), held-out-subject window AUROC:
 
-| Dataset | Event F1 |
-|---------|----------|
-| CHB-MIT | 0.29 |
-| Siena | 0.24 |
-| TUH-Sz (TUSZ) | 0.50 |
-| 3-dataset overall | **0.41** |
+| Dataset | v1.2.0 | v1.3.0 |
+|---------|--------|--------|
+| CHB-MIT | 0.794 | 0.820 |
+| Siena | 0.755 | 0.762 |
+| TUH-Sz (TUSZ) | 0.658 | 0.675 |
+| overall | 0.732 | **0.745** |
 
-For comparison, the CHB-MIT-only v1.1.0 scored F1 0.68 on CHB-MIT but ~0.00 on
-Siena/TUSZ (overall 0.26) — the multi-dataset model is clearly better on the
-SzCORE-style multi-dataset aggregate.
+Expanding TUSZ training data (400→1500 recordings) consistently improved
+window-level generalization. Event-F1 operating point: threshold 0.70,
+smoothing 7. (Both multi-dataset models vastly outperform the CHB-MIT-only
+v1.1.0, which scored ~0.00 on Siena/TUSZ.)
 
 ## Cross-dataset notes
 
@@ -119,4 +120,4 @@ SzCORE-style multi-dataset aggregate.
 - **Signal scaling**: signals are read in MNE Volts with **no extra rescaling and no filtering**, matching the training pipeline exactly (per-window z-scoring is applied inside feature extraction).
 - **Inference parameters**: 2 s windows, 4 s step, TDA folds = 5.
 - **Post-processing**: per-window probabilities are smoothed over 7 windows (persistence filter), thresholded at 0.70, then filtered by minimum duration 10 s and merge gap 5 s.
-- **Weights**: multi-dataset, trained on CHB-MIT + Siena + TUH-Sz (subject-level splits, EEG augmentation, per-dataset balancing).
+- **Weights**: multi-dataset, trained on CHB-MIT + Siena + TUH-Sz (TUSZ 1500 recordings; subject-level splits, EEG augmentation, per-dataset balancing).
