@@ -44,7 +44,17 @@ mv_afa_szcore/
 
 ## Build & test the Docker image
 
+> ⚠️ **Build for `linux/amd64`.** SzCORE CI runs on linux/amd64. On Apple Silicon
+> a plain `docker build` produces an **arm64** image that the benchmark cannot
+> run ("cannot pull the image"). Always cross-build and push with buildx:
+> ```bash
+> docker buildx build --platform linux/amd64 -t mellow99/mv-afa-szcore:v1.3.0 --push .
+> docker manifest inspect mellow99/mv-afa-szcore:v1.3.0   # must show linux/amd64
+> ```
+> Also make sure the Docker Hub repo is **public** (it defaults to private).
+
 ```bash
+# On linux/amd64 hosts a plain build is fine:
 docker build -t mellow99/mv-afa-szcore:v1.3.0 .
 
 # Test on any EDF file:
