@@ -9,7 +9,30 @@ corpora beats a CHB-MIT-only specialist on the aggregate (see `Cross-dataset
 notes` below).
 
 - 🐳 Docker: `docker.io/mellow99/mv-afa-szcore:v1.3.0`
-- 🔀 SzCORE PR: [esl-epfl/szcore#89](https://github.com/esl-epfl/szcore/pull/89)
+- 🔀 SzCORE PR: [esl-epfl/szcore#89](https://github.com/esl-epfl/szcore/pull/89) — **merged ✅**
+- 🏆 **Live on the leaderboard:** [epilepsybenchmarks.com — MV-AFA v1.3.0](https://epilepsybenchmarks.com/algorithm/?algo=docker-io-mellow99-mv-afa-szcore-v1.3.0)
+
+## 🏆 Official SzCORE leaderboard results (event-based F1)
+
+The submission is merged and fully evaluated across all five benchmark datasets.
+🚂 marks a **training** dataset (not counted as generalization); Dianalund and
+SeizeIT are the true held-out corpora.
+
+| Dataset | F1 (%) | Sensitivity (%) | Precision (%) | FP / day |
+|---------|:------:|:---------------:|:-------------:|:--------:|
+| CHB-MIT 🚂 | **52.00** | 74.92 | 46.25 | **13** |
+| TUH 🚂 | 17.68 | 98.16 | 13.13 | 283 |
+| Siena 🚂 | 7.05 | 100.00 | 3.74 | 275 |
+| Dianalund | 2.18 | 100.00 | 1.28 | 290 |
+| SeizeIT | 0.77 | 100.00 | 0.39 | 288 |
+
+**Read the results honestly:** on the *trained* CHB-MIT corpus the model is
+usable (F1 52 %, only 13 false alarms/day). On *unseen* corpora (Dianalund,
+SeizeIT) it collapses to ~0 F1 — 100 % sensitivity but <2 % precision, i.e. it
+fires almost continuously. This confirms the project's central finding: for this
+architecture, **zero-shot cross-dataset transfer is near chance**, and closing
+that generalization gap is the goal of the follow-up work
+([Direction B / TIMA-Net](https://github.com/yuhangYH/mvafa-generalization)).
 
 ## Method
 
