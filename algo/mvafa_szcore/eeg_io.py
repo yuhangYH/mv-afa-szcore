@@ -41,14 +41,24 @@ _ALIASES = {
 _TARGET_SF = 256.0
 
 
+# Reference suffixes that mark a referential (monopolar) channel, e.g.
+# SzCORE "Fp1-Avg", TUSZ "EEG FP1-REF" / "EEG FP1-LE".
+_REF_SUFFIXES = {"AVG", "REF", "LE", "AR", "CAR"}
+
+
 def _canonical(name: str) -> str:
+    """Normalise a channel label to an electrode ("FP1") or a bipolar pair
+    ("F7-T7"), applying the old->new 10-20 aliases to every electrode."""
     n = name.upper().strip()
     n = re.sub(r"^EEG\s*", "", n)
     n = re.sub(r"^POL\s*", "", n)
-    n = n.replace("-REF", "").replace("-LE", "").replace(" ", "")
+    n = n.replace(" ", "")
     # Strip a trailing duplicate index, e.g. CHB-MIT "T8-P8-0" -> "T8-P8".
     n = re.sub(r"-\d+$", "", n)
-    return _ALIASES.get(n, n)
+    parts = [p for p in n.split("-") if p]
+    if len(parts) > 1 and parts[-1] in _REF_SUFFIXES:
+        parts = parts[:-1]
+    return "-".join(_ALIASES.get(p, p) for p in parts)
 
 
 def load_edf_as_bipolar(edf_path: str) -> Tuple[np.ndarray, float]:
@@ -87,6 +97,11 @@ def load_edf_as_bipolar(edf_path: str) -> Tuple[np.ndarray, float]:
         else:
             missing.append(f"{anode}-{cathode}")
 
+    if len(missing) == len(BIPOLAR_PAIRS):
+        raise ValueError(
+            f"No bipolar channel could be built from {edf_path}; "
+            f"channels found: {raw.ch_names}"
+        )
     if missing:
         warnings.warn(
             f"{len(missing)} bipolar channel(s) unavailable and filled with "
