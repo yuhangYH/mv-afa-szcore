@@ -11,7 +11,7 @@ corpora beats a CHB-MIT-only specialist on the aggregate (see `Cross-dataset
 notes` below).
 
 - 🐳 Docker: `docker.io/mellow99/mv-afa-szcore:v1-3-1` (the tag has no dots so it matches the key the SzCORE website derives from the image name)
-- 🔀 SzCORE PR: [esl-epfl/szcore#89](https://github.com/esl-epfl/szcore/pull/89) — **merged ✅**
+- 🔀 SzCORE PRs: [esl-epfl/szcore#89](https://github.com/esl-epfl/szcore/pull/89) (v1.3.0, merged) · [esl-epfl/szcore#93](https://github.com/esl-epfl/szcore/pull/93) (v1.3.1 fix, under review)
 - 🏆 v1.3.0 on the leaderboard: [epilepsybenchmarks.com, MV-AFA v1.3.0](https://epilepsybenchmarks.com/algorithm/?algo=docker-io-mellow99-mv-afa-szcore-v1.3.0) (affected by the bug below; v1.3.1 re-evaluation pending)
 
 ## v1.3.1 channel-mapping fix
