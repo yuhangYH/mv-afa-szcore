@@ -21,7 +21,10 @@ The v1.3.0 leaderboard numbers below were produced with a broken input stage:
 | Input | v1.3.0 | v1.3.1 |
 |---|---|---|
 | SzCORE referential channels `Fp1-Avg`, `T3-Avg`, … (Siena, TUH, Dianalund, SeizeIT) | `-Avg` suffix not stripped, **18/18 bipolar pairs zero-filled**; the model sees a flat signal and outputs a constant p≈0.95, giving one event over the whole recording (≈288 FP/day) | all 18 pairs built |
-| SzCORE CHB-MIT bipolar channels with old labels `F7-T3`, `T3-T5`, `T5-O1`, `F8-T4`, `T4-T6`, `T6-O2` | aliases applied only to whole names, **6/18 temporal pairs zero-filled** | all 18 pairs built |
+| SzCORE CHB-MIT files `chb12_27`, `chb12_28`, `chb12_29` (re-derived from unipolar, so labelled `F7-T3`, `T3-T5`, `T5-O1`, `F8-T4`, `T4-T6`, `T6-O2`) | aliases applied only to whole names, **6/18 temporal pairs zero-filled** | all 18 pairs built |
+
+All other SzCORE CHB-MIT files keep the original CHB-MIT labels (`F7-T7`, ...), which v1.3.0 already handled, so the
+v1.3.0 CHB-MIT score is valid except for those three files (checked with `epilepsy2bids` 0.0.7, the converter SzCORE uses).
 
 Fix in `algo/mvafa_szcore/eeg_io.py`: reference suffixes (`AVG`, `REF`, `LE`, `AR`, `CAR`) are stripped and
 the T3/T4/T5/T6 → T7/T8/P7/P8 aliases are applied to each electrode of a bipolar name. The loader now
@@ -34,7 +37,7 @@ identical to those on the original EDFs):
 |---|---|---|
 | Siena PN00-1 | 18/18 zero pairs, p=0.949 for every window, 1 event covering 8–2614 s | P(seizure)=0.81, P(background)=0.65, seizure hit, 31.6 FP/h |
 | Siena PN12-3 | (same collapse) | seizure hit, 0 FP |
-| CHB-MIT chb11_92 | 6/18 zero pairs | P(seizure)=0.92, P(background)=0.22, seizure hit, 1 FP/h |
+| CHB-MIT chb11_92 | 0/18 zero pairs (original labels; identical to v1.3.1) | P(seizure)=0.92, P(background)=0.22, seizure hit, 1 FP/h |
 
 Siena PN00 still has a high background probability after the fix, which is a model/calibration
 limitation rather than an I/O bug.
@@ -56,8 +59,8 @@ SeizeIT are the true held-out corpora.
 **These v1.3.0 numbers are invalid outside CHB-MIT.** The ≈100 % sensitivity and ≈288 FP/day on
 Siena, TUH, Dianalund and SeizeIT are the signature of a constant "seizure" output caused by the
 zero-filled input (the scorer caps events at 5 min, so an always-on detector gives 86400/300 ≈ 288
-FP/day). They say nothing about cross-dataset generalization. Even the CHB-MIT score ran with 6 of
-18 channels zeroed. Generalization claims should be based only on the v1.3.1 results for the
+FP/day). They say nothing about cross-dataset generalization. The CHB-MIT score is valid apart from
+chb12_27-29, which ran with 6 of 18 pairs zeroed. Generalization claims should be based only on the v1.3.1 results for the
 held-out corpora **Dianalund and SeizeIT1**; CHB-MIT, Siena and TUH are training corpora.
 
 ## Method
@@ -89,6 +92,18 @@ mv_afa_szcore/
         ├── inference.py     # Sliding-window inference + smoothed event detection
         └── weights/
             └── best_model.pt   # multi-dataset (CHB-MIT + Siena + TUSZ)
+```
+
+## Tests
+
+`tests/test_eeg_io.py` writes small EDFs in the SzCORE formats (19 `<elec>-Avg` common-average channels,
+and 18 double-banana bipolar channels with old or new 10-20 names) and checks that all 18 bipolar pairs are
+built with the right values, that an unrecognised montage raises, that the model output on SzCORE unipolar
+input is not constant, and that smoothing keeps one value per window. v1.3.0 fails 10 of these tests.
+
+```bash
+pip install pytest
+python -m pytest tests
 ```
 
 ## Build & test the Docker image

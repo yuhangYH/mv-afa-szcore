@@ -122,11 +122,18 @@ def run_inference(edf_path: str) -> Tuple[np.ndarray, float, float, np.ndarray]:
 
 
 def _smooth(probs: np.ndarray, k: int) -> np.ndarray:
-    """Centered moving average over k windows (persistence filter)."""
+    """Centered moving average over k windows (persistence filter).
+
+    Same values as ``np.convolve(probs, kernel, mode="same")`` when there are at
+    least k windows, but always one value per window: "same" returns
+    max(len(probs), k) values, which mis-aligns (or overruns) the window starts
+    of recordings shorter than k windows.
+    """
     if k <= 1 or len(probs) < 2:
         return probs
-    kernel = np.ones(k) / k
-    return np.convolve(probs, kernel, mode="same")
+    full = np.convolve(probs, np.ones(k) / k)
+    start = (k - 1) // 2
+    return full[start:start + len(probs)]
 
 
 def probs_to_events(
