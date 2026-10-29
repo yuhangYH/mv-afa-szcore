@@ -15,7 +15,7 @@ Pipeline (matches eeg_chbmit_multiview_gated.py training protocol)
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -32,16 +32,30 @@ N_CHANNELS   = 18
 STAT_DIM     = 40
 TDA_DIM      = 12
 TDA_FOLDS    = 5
-THRESHOLD    = 0.70     # v1.2.0 multi-dataset operating point (maximises event F1)
+THRESHOLD    = 0.60     # v1.3.2 (v1.3.0/v1.3.1: 0.70); see the gate below
 
-# --- Post-processing (validated on continuous CHB-MIT recordings) ---
-# Probability smoothing over SMOOTH_K windows (step 4 s -> ~28 s persistence)
-# suppresses isolated confident false positives. On 27.6 h of continuous
-# recordings this brought false alarms from ~500/24h down to ~1/24h while
-# keeping 100% event sensitivity.
-SMOOTH_K        = 7
+# --- Post-processing ---
+# Probability smoothing over SMOOTH_K windows (step 4 s -> ~20 s persistence)
+# suppresses isolated confident false positives.
+SMOOTH_K        = 5
 MIN_SEIZURE_SEC = 10.0
 MERGE_GAP_SEC   = 5.0
+
+# --- Recording-adaptive gate (v1.3.2) ---
+# On recordings of at least GATE_MIN_RECORDING_SEC, the threshold is raised to
+# the GATE_QUANTILE quantile of the smoothed probabilities, so at most
+# (1 - GATE_QUANTILE) of the windows can be positive. This bounds the false-alarm
+# rate on recordings whose background probability sits above THRESHOLD (e.g.
+# Siena PN00, median p~0.72). Shorter recordings (all TUH files, median 10 min)
+# have no reliable background baseline and keep the fixed threshold. The gate
+# can only raise the threshold, never lower it.
+#
+# THRESHOLD, SMOOTH_K and the gate were chosen together on SzCORE-format
+# CHB-MIT, Siena and TUH-Sz (local replica, timescoring event scoring) by mean
+# subject-averaged event F1; leave-one-dataset-out selection picked the same
+# setting for the CHB-MIT and Siena folds. See README "v1.3.2 post-processing".
+GATE_QUANTILE          = 0.995
+GATE_MIN_RECORDING_SEC = 3600.0
 
 BATCH_SIZE = 16
 MODEL_PATH = Path(__file__).parent / "weights" / "best_model.pt"
@@ -136,6 +150,22 @@ def _smooth(probs: np.ndarray, k: int) -> np.ndarray:
     return full[start:start + len(probs)]
 
 
+def gate_threshold(
+    smoothed: np.ndarray,
+    threshold: float,
+    recording_sec: Optional[float],
+    quantile: Optional[float] = GATE_QUANTILE,
+    min_recording_sec: float = GATE_MIN_RECORDING_SEC,
+) -> float:
+    """Per-recording threshold: max(threshold, quantile of the smoothed
+    probabilities) on recordings of at least ``min_recording_sec``; the fixed
+    threshold otherwise, or when the recording length is unknown."""
+    if (quantile is None or recording_sec is None or len(smoothed) == 0
+            or recording_sec < min_recording_sec):
+        return threshold
+    return max(threshold, float(np.quantile(smoothed, quantile)))
+
+
 def probs_to_events(
     probs: np.ndarray,
     window_starts_sec: np.ndarray,
@@ -144,13 +174,20 @@ def probs_to_events(
     min_seizure_sec: float = MIN_SEIZURE_SEC,
     merge_gap_sec: float = MERGE_GAP_SEC,
     smooth_k: int = SMOOTH_K,
+    recording_sec: Optional[float] = None,
+    gate_quantile: Optional[float] = GATE_QUANTILE,
+    gate_min_recording_sec: float = GATE_MIN_RECORDING_SEC,
 ) -> List[Tuple[float, float]]:
     """Convert per-window probabilities to (onset, offset) seizure events.
 
     A moving-average smoothing over ``smooth_k`` windows is applied first so
-    that only sustained high-probability runs are declared seizures.
+    that only sustained high-probability runs are declared seizures. Pass the
+    EDF duration as ``recording_sec`` to enable the recording-adaptive gate
+    (see ``gate_threshold``); without it the fixed ``threshold`` is used.
     """
     smoothed = _smooth(np.asarray(probs, dtype=np.float64), smooth_k)
+    threshold = gate_threshold(smoothed, threshold, recording_sec,
+                               gate_quantile, gate_min_recording_sec)
     positive = smoothed >= threshold
     if not positive.any():
         return []

@@ -72,7 +72,10 @@ def main():
         print("[WARN] No windows extracted — writing bckg annotation", flush=True)
         events = []
     else:
-        events = probs_to_events(probs, window_starts_sec, window_sec)
+        with pyedflib.EdfReader(args.input) as edf:
+            recording_sec = float(edf.getFileDuration())
+        events = probs_to_events(probs, window_starts_sec, window_sec,
+                                 recording_sec=recording_sec)
         print(f"[INFO] Detected {len(events)} seizure event(s)", flush=True)
 
     _write_tsv(args.output, events, args.input)

@@ -6,10 +6,10 @@
 title: "MV-AFA: Interpretable Topology-Aware Multi-View Adaptive Fusion Attention for EEG Seizure Detection"
 short_title: "MV-AFA_Guo_2026"
 
-image: "docker.io/mellow99/mv-afa-szcore:v1-3-1"
+image: "docker.io/mellow99/mv-afa-szcore:v1-3-2"
 
-version: "1.3.1"
-date_released: "2026-09-24"
+version: "1.3.2"
+date_released: "2026-10-29"
 
 authors:
   - given_names: "Yuhang"
@@ -38,9 +38,12 @@ abstract: >-
   temporally smoothed and gated by a persistence / minimum-duration / merge
   post-processor before emitting BIDS-compatible TSV annotations. Referential
   10-20 inputs (including SzCORE "<electrode>-Avg" channels and old T3/T4/T5/T6
-  labels) are remontaged to the 18 bipolar pairs automatically. v1.3.1 fixes a
+  labels) are remontaged to the 18 bipolar pairs automatically. v1.3.1 fixed a
   channel-mapping bug in v1.3.0 that zero-filled the input on SzCORE
-  referential data and 6 temporal pairs on CHB-MIT; the weights are unchanged.
+  referential data (and 6 temporal pairs on three CHB-MIT files). v1.3.2 adds a
+  recording-adaptive threshold: on recordings of 1 h or more at most 0.5% of the
+  windows can be positive, which bounds false alarms where the background
+  probability is high. The weights are unchanged since v1.3.0.
 
 # Training datasets used
 datasets:

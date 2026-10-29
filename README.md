@@ -2,15 +2,16 @@
 
 Multi-View Adaptive Fusion Attention (MV-AFA) seizure detection algorithm, packaged for the [SzCORE benchmark](https://epilepsybenchmarks.com).
 
-**Current release: v1.3.1** (leaderboard name **MV-AFA_Guo_2026**). This is an input-pipeline bug fix with
-the same v1.3.0 weights; see [v1.3.1 fix](#v131-channel-mapping-fix) below.
+**Current version: v1.3.2** (leaderboard name **MV-AFA_Guo_2026**), with the same weights as v1.3.0.
+v1.3.1 fixed the input pipeline ([v1.3.1 fix](#v131-channel-mapping-fix)); v1.3.2 changes only the
+event post-processing ([v1.3.2 post-processing](#v132-post-processing)).
 Multi-dataset model (CHB-MIT + Siena + TUH-Sz),
 with TUSZ expanded to 1500 recordings for greater subject diversity. The SzCORE
 leaderboard scores event-F1 across 5 datasets, so a model that has seen multiple
 corpora beats a CHB-MIT-only specialist on the aggregate (see `Cross-dataset
 notes` below).
 
-- 🐳 Docker: `docker.io/mellow99/mv-afa-szcore:v1-3-1` (the tag has no dots so it matches the key the SzCORE website derives from the image name)
+- 🐳 Docker: `docker.io/mellow99/mv-afa-szcore:v1-3-2` (the tag has no dots so it matches the key the SzCORE website derives from the image name; `v1-3-1` is the input fix alone)
 - 🔀 SzCORE PRs: [esl-epfl/szcore#89](https://github.com/esl-epfl/szcore/pull/89) (v1.3.0, merged) · [esl-epfl/szcore#93](https://github.com/esl-epfl/szcore/pull/93) (v1.3.1 fix, under review)
 - 🏆 v1.3.0 on the leaderboard: [epilepsybenchmarks.com, MV-AFA v1.3.0](https://epilepsybenchmarks.com/algorithm/?algo=docker-io-mellow99-mv-afa-szcore-v1.3.0) (affected by the bug below; v1.3.1 re-evaluation pending)
 
@@ -42,6 +43,56 @@ identical to those on the original EDFs):
 Siena PN00 still has a high background probability after the fix, which is a model/calibration
 limitation rather than an I/O bug.
 
+## v1.3.2 post-processing
+
+With all 18 pairs built, some recordings still sit above the fixed 0.70 threshold for most of their
+length (Siena PN00: background median p≈0.72), and the fixed threshold turns that into an event every
+few minutes. v1.3.2 keeps the model and changes only `probs_to_events`:
+
+- threshold 0.60 and smoothing over 5 windows (was 0.70 and 7); minimum duration 10 s and merge gap 5 s
+  are unchanged;
+- **recording-adaptive gate**: on recordings of at least 60 min the threshold is raised to the 99.5th
+  percentile of that recording's smoothed probabilities, so at most 0.5 % of its windows can be positive.
+  An event needs at least 3 consecutive positive windows, so this caps false alarms at about 36 per day of
+  recording, whatever the background level. The gate only ever raises the threshold. Shorter recordings
+  (every TUH-Sz file) keep the fixed threshold.
+
+The setting was chosen from 777 candidates (fixed thresholds, smoothing, minimum duration, and gate
+quantile / minimum recording length) by mean subject-averaged event F1 over CHB-MIT, Siena and TUH-Sz.
+Leave-one-dataset-out (LODO) selection, i.e. choosing on two corpora and scoring the third, picked the same
+setting when CHB-MIT or Siena was held out.
+
+Local reproduction: SzCORE-format EDFs made with `epilepsy2bids` 0.0.7 (the converter SzCORE uses),
+scored with `timescoring` 426f8d2 event scoring (tolerances 30 s / 60 s, events capped at 5 min, 90 s
+between events). Counts are summed per subject and averaged over subjects, like `szcore-evaluation`.
+The local v1.3.0 run reproduces the Siena leaderboard result exactly.
+
+| Dataset (local set) | Version | Sens | Prec | F1 | FP/day |
+|---|---|---|---|---|---|
+| CHB-MIT: all 141 seizure files + 2 seizure-free files per subject (189 files, 23 subjects, 267 h) | v1.3.0 | 0.749 | 0.685 | 0.653 | 10.0 |
+| | v1.3.1 | 0.746 | 0.698 | 0.657 | 8.7 |
+| | **v1.3.2** | 0.721 | 0.815 | **0.734** | **2.8** |
+| Siena: all 41 files (14 subjects, 141 h) | v1.3.0 | 1.000 | 0.037 | 0.071 | 274.7 |
+| | v1.3.1 | 0.555 | 0.572 | 0.422 | 17.5 |
+| | **v1.3.2** | 0.688 | 0.533 | **0.545** | 17.4 |
+| TUH-Sz eval: 864 files (43 subjects, 128 h) | v1.3.0 | 1.000 | 0.182 | 0.270 | 257.5 |
+| | v1.3.1 | 0.475 | 0.423 | 0.363 | 33.0 |
+| | **v1.3.2** | 0.684 | 0.342 | **0.390** | 73.6 |
+| | LODO choice for TUH (threshold 0.70, smoothing 3, gate q0.99 from 30 min) | 0.504 | 0.358 | 0.345 | 43.5 |
+
+Read these with care:
+
+- CHB-MIT, Siena and TUH-Sz are **training corpora** of the model, and the post-processing was chosen on
+  them too. The LODO rows are the fairer estimate: F1 0.734 (CHB-MIT), 0.545 (Siena), 0.345 (TUH-Sz).
+- The local CHB-MIT set has only 48 of the seizure-free files, so its precision and FP/day are better than
+  on the full set (leaderboard v1.3.0: F1 0.520, 12.8 FP/day). On those 48 files (77 h) false alarms drop
+  from 8.4/day (v1.3.1) to 4.3/day (v1.3.2).
+- On TUH-Sz the gate never fires (no file is 60 min long); the lower threshold trades FP/day (33 → 74)
+  for sensitivity (0.48 → 0.68).
+- Siena recordings shorter than 60 min (6 of 41) are not gated; PN00-1 (44 min) still gets 34 false alarms.
+- The held-out corpora (Dianalund, SeizeIT1) cannot be evaluated locally. Their recordings are long, so the
+  gate applies to them.
+
 ## 🏆 Official SzCORE leaderboard results for v1.3.0 (event-based F1)
 
 The submission is merged and fully evaluated across all five benchmark datasets.
@@ -60,7 +111,7 @@ SeizeIT are the true held-out corpora.
 Siena, TUH, Dianalund and SeizeIT are the signature of a constant "seizure" output caused by the
 zero-filled input (the scorer caps events at 5 min, so an always-on detector gives 86400/300 ≈ 288
 FP/day). They say nothing about cross-dataset generalization. The CHB-MIT score is valid apart from
-chb12_27-29, which ran with 6 of 18 pairs zeroed. Generalization claims should be based only on the v1.3.1 results for the
+chb12_27-29, which ran with 6 of 18 pairs zeroed. Generalization claims should be based only on re-evaluated (v1.3.1 or later) results for the
 held-out corpora **Dianalund and SeizeIT1**; CHB-MIT, Siena and TUH are training corpora.
 
 ## Method
@@ -100,6 +151,8 @@ mv_afa_szcore/
 and 18 double-banana bipolar channels with old or new 10-20 names) and checks that all 18 bipolar pairs are
 built with the right values, that an unrecognised montage raises, that the model output on SzCORE unipolar
 input is not constant, and that smoothing keeps one value per window. v1.3.0 fails 10 of these tests.
+`tests/test_postprocessing.py` checks the v1.3.2 gate: it removes the false alarms of a long recording whose
+background is above the threshold, is off for recordings under 60 min, and only ever removes events.
 
 ```bash
 pip install pytest
@@ -112,14 +165,14 @@ python -m pytest tests
 > a plain `docker build` produces an **arm64** image that the benchmark cannot
 > run ("cannot pull the image"). Always cross-build and push with buildx:
 > ```bash
-> docker buildx build --platform linux/amd64 -t mellow99/mv-afa-szcore:v1-3-1 --push .
-> docker manifest inspect mellow99/mv-afa-szcore:v1-3-1   # must show linux/amd64
+> docker buildx build --platform linux/amd64 -t mellow99/mv-afa-szcore:v1-3-2 --push .
+> docker manifest inspect mellow99/mv-afa-szcore:v1-3-2   # must show linux/amd64
 > ```
 > Also make sure the Docker Hub repo is **public** (it defaults to private).
 
 ```bash
 # On linux/amd64 hosts a plain build is fine:
-docker build -t mellow99/mv-afa-szcore:v1-3-1 .
+docker build -t mellow99/mv-afa-szcore:v1-3-2 .
 
 # Test on any EDF file:
 docker run --rm \
@@ -127,7 +180,7 @@ docker run --rm \
   -v /tmp/szcore_out:/output \
   -e INPUT=sample.edf \
   -e OUTPUT=sample.tsv \
-  mellow99/mv-afa-szcore:v1-3-1
+  mellow99/mv-afa-szcore:v1-3-2
 cat /tmp/szcore_out/sample.tsv
 ```
 
@@ -141,7 +194,7 @@ onset   duration   eventType   confidence   channels   dateTime   recordingDurat
 
 ```bash
 docker login
-docker push mellow99/mv-afa-szcore:v1-3-1
+docker push mellow99/mv-afa-szcore:v1-3-2
 
 # Submit: fork esl-epfl/szcore, copy mv_afa.yaml to algorithms/, open a PR.
 # SzCORE CI then runs the Docker image automatically.
@@ -175,8 +228,8 @@ v1.3.0 (TUSZ 1500) vs v1.2.0 (TUSZ 400), held-out-subject window AUROC:
 | overall | 0.732 | **0.745** |
 
 Expanding TUSZ training data (400→1500 recordings) consistently improved
-window-level generalization. Event-F1 operating point: threshold 0.70,
-smoothing 7. (Both multi-dataset models vastly outperform the CHB-MIT-only
+window-level generalization. Event-F1 operating point up to v1.3.1: threshold 0.70,
+smoothing 7 (v1.3.2: see [v1.3.2 post-processing](#v132-post-processing)). (Both multi-dataset models vastly outperform the CHB-MIT-only
 v1.1.0, which scored ~0.00 on Siena/TUSZ.)
 
 ## Cross-dataset notes
@@ -196,5 +249,5 @@ v1.1.0, which scored ~0.00 on Siena/TUSZ.)
 - **Channel remontage**: SzCORE standardizes to 19 standard 10-20 channels named `<electrode>-Avg`; the inference code strips the reference suffix and derives the 18 CHB-MIT bipolar pairs algebraically. It also falls back to bipolar channel names (e.g. `FP1-F7`, or SzCORE CHB-MIT's `F7-T3`) when given an already-bipolar recording.
 - **Signal scaling**: signals are read in MNE Volts with **no extra rescaling and no filtering**, matching the training pipeline exactly (per-window z-scoring is applied inside feature extraction).
 - **Inference parameters**: 2 s windows, 4 s step, TDA folds = 5.
-- **Post-processing**: per-window probabilities are smoothed over 7 windows (persistence filter), thresholded at 0.70, then filtered by minimum duration 10 s and merge gap 5 s.
+- **Post-processing**: per-window probabilities are smoothed over 5 windows (persistence filter) and thresholded at 0.60, or at the recording's 99.5th percentile if higher on recordings of 60 min or more; events are then filtered by minimum duration 10 s and merge gap 5 s.
 - **Weights**: multi-dataset, trained on CHB-MIT + Siena + TUH-Sz (TUSZ 1500 recordings; subject-level splits, EEG augmentation, per-dataset balancing).
