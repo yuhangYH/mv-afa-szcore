@@ -11,9 +11,9 @@ leaderboard scores event-F1 across 5 datasets, so a model that has seen multiple
 corpora beats a CHB-MIT-only specialist on the aggregate (see `Cross-dataset
 notes` below).
 
-- 🐳 Docker: `docker.io/mellow99/mv-afa-szcore:v1-3-2` (the tag has no dots so it matches the key the SzCORE website derives from the image name; `v1-3-1` is the input fix alone)
-- 🔀 SzCORE PRs: [esl-epfl/szcore#89](https://github.com/esl-epfl/szcore/pull/89) (v1.3.0, merged) · [esl-epfl/szcore#93](https://github.com/esl-epfl/szcore/pull/93) (v1.3.1 fix, under review)
-- 🏆 v1.3.0 on the leaderboard: [epilepsybenchmarks.com, MV-AFA v1.3.0](https://epilepsybenchmarks.com/algorithm/?algo=docker-io-mellow99-mv-afa-szcore-v1.3.0) (affected by the bug below; v1.3.1 re-evaluation pending)
+- 🐳 Docker: `docker.io/mellow99/mv-afa-szcore:v1-3-2` (linux/amd64, digest `sha256:5439db05835d4ef2e8bd004a9bb3c461608caae684faf1a6e1035c92bc977983`; the tag has no dots so it matches the key the SzCORE website derives from the image name; `v1-3-1` is the input fix alone)
+- 🔀 SzCORE PRs: [esl-epfl/szcore#89](https://github.com/esl-epfl/szcore/pull/89) (v1.3.0, merged) · [esl-epfl/szcore#93](https://github.com/esl-epfl/szcore/pull/93) (v1.3.1 fix, superseded) · [esl-epfl/szcore#96](https://github.com/esl-epfl/szcore/pull/96) (v1.3.2, under review)
+- 🏆 v1.3.0 on the leaderboard: [epilepsybenchmarks.com, MV-AFA v1.3.0](https://epilepsybenchmarks.com/algorithm/?algo=docker-io-mellow99-mv-afa-szcore-v1.3.0) (affected by the bug below; v1.3.2 re-evaluation pending)
 
 ## v1.3.1 channel-mapping fix
 
