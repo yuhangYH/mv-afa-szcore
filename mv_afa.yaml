@@ -41,9 +41,10 @@ abstract: >-
   labels) are remontaged to the 18 bipolar pairs automatically. v1.3.1 fixed a
   channel-mapping bug in v1.3.0 that zero-filled the input on SzCORE
   referential data (and 6 temporal pairs on three CHB-MIT files). v1.3.2 adds a
-  recording-adaptive threshold: on recordings of 1 h or more at most 0.5% of the
-  windows can be positive, which bounds false alarms where the background
-  probability is high. The weights are unchanged since v1.3.0.
+  recording-adaptive threshold: on recordings of 1 h or more a lower threshold
+  is used and at most 0.5% of the windows can be positive, which bounds false
+  alarms where the background probability is high; shorter recordings keep the
+  v1.3.1 setting. The weights are unchanged since v1.3.0.
 
 # Training datasets used
 datasets:

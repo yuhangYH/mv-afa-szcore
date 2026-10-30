@@ -32,28 +32,32 @@ N_CHANNELS   = 18
 STAT_DIM     = 40
 TDA_DIM      = 12
 TDA_FOLDS    = 5
-THRESHOLD    = 0.60     # v1.3.2 (v1.3.0/v1.3.1: 0.70); see the gate below
+THRESHOLD    = 0.70     # recordings shorter than GATE_MIN_RECORDING_SEC
 
 # --- Post-processing ---
-# Probability smoothing over SMOOTH_K windows (step 4 s -> ~20 s persistence)
+# Probability smoothing over SMOOTH_K windows (step 4 s -> ~28 s persistence)
 # suppresses isolated confident false positives.
-SMOOTH_K        = 5
+SMOOTH_K        = 7
 MIN_SEIZURE_SEC = 10.0
 MERGE_GAP_SEC   = 5.0
 
-# --- Recording-adaptive gate (v1.3.2) ---
-# On recordings of at least GATE_MIN_RECORDING_SEC, the threshold is raised to
-# the GATE_QUANTILE quantile of the smoothed probabilities, so at most
-# (1 - GATE_QUANTILE) of the windows can be positive. This bounds the false-alarm
-# rate on recordings whose background probability sits above THRESHOLD (e.g.
-# Siena PN00, median p~0.72). Shorter recordings (all TUH files, median 10 min)
-# have no reliable background baseline and keep the fixed threshold. The gate
-# can only raise the threshold, never lower it.
+# --- Long recordings (v1.3.2) ---
+# On recordings of at least GATE_MIN_RECORDING_SEC, a lower threshold and
+# shorter smoothing are used, and the threshold is raised to the GATE_QUANTILE
+# quantile of the smoothed probabilities, so at most (1 - GATE_QUANTILE) of the
+# windows can be positive. The gate bounds the false-alarm rate on recordings
+# whose background probability sits above the threshold (e.g. Siena PN00,
+# median p~0.72), which is what makes the lower threshold safe there. Shorter
+# recordings (all TUH files, median 10 min) have no reliable background
+# baseline, so they keep the v1.3.1 setting (THRESHOLD, SMOOTH_K): the lower
+# threshold without the gate doubled TUH-Sz false alarms (33 -> 74 per day).
 #
-# THRESHOLD, SMOOTH_K and the gate were chosen together on SzCORE-format
-# CHB-MIT, Siena and TUH-Sz (local replica, timescoring event scoring) by mean
-# subject-averaged event F1; leave-one-dataset-out selection picked the same
-# setting for the CHB-MIT and Siena folds. See README "v1.3.2 post-processing".
+# The long-recording setting was chosen on SzCORE-format CHB-MIT, Siena and
+# TUH-Sz (local replica, timescoring event scoring) by mean subject-averaged
+# event F1; leave-one-dataset-out selection picked the same setting for the
+# CHB-MIT and Siena folds. See README "v1.3.2 post-processing".
+LONG_THRESHOLD         = 0.60
+LONG_SMOOTH_K          = 5
 GATE_QUANTILE          = 0.995
 GATE_MIN_RECORDING_SEC = 3600.0
 
@@ -170,10 +174,10 @@ def probs_to_events(
     probs: np.ndarray,
     window_starts_sec: np.ndarray,
     window_sec: float,
-    threshold: float = THRESHOLD,
+    threshold: Optional[float] = None,
     min_seizure_sec: float = MIN_SEIZURE_SEC,
     merge_gap_sec: float = MERGE_GAP_SEC,
-    smooth_k: int = SMOOTH_K,
+    smooth_k: Optional[int] = None,
     recording_sec: Optional[float] = None,
     gate_quantile: Optional[float] = GATE_QUANTILE,
     gate_min_recording_sec: float = GATE_MIN_RECORDING_SEC,
@@ -182,9 +186,16 @@ def probs_to_events(
 
     A moving-average smoothing over ``smooth_k`` windows is applied first so
     that only sustained high-probability runs are declared seizures. Pass the
-    EDF duration as ``recording_sec`` to enable the recording-adaptive gate
-    (see ``gate_threshold``); without it the fixed ``threshold`` is used.
+    EDF duration as ``recording_sec``: recordings of at least
+    ``gate_min_recording_sec`` default to LONG_THRESHOLD / LONG_SMOOTH_K with
+    the recording-adaptive gate (see ``gate_threshold``); shorter or
+    unknown-length recordings default to THRESHOLD / SMOOTH_K, ungated.
     """
+    long_recording = recording_sec is not None and recording_sec >= gate_min_recording_sec
+    if threshold is None:
+        threshold = LONG_THRESHOLD if long_recording else THRESHOLD
+    if smooth_k is None:
+        smooth_k = LONG_SMOOTH_K if long_recording else SMOOTH_K
     smoothed = _smooth(np.asarray(probs, dtype=np.float64), smooth_k)
     threshold = gate_threshold(smoothed, threshold, recording_sec,
                                gate_quantile, gate_min_recording_sec)

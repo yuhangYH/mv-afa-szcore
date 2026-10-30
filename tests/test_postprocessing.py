@@ -2,9 +2,10 @@
 
 After the v1.3.1 input fix, some recordings still have a background
 probability above THRESHOLD (Siena PN00: median p~0.72), which a fixed
-threshold turns into an event every few minutes. The recording-adaptive gate
-raises the threshold on long recordings so that at most (1 - GATE_QUANTILE) of
-the windows can be positive.
+threshold turns into an event every few minutes. On long recordings v1.3.2
+uses a lower threshold and a recording-adaptive gate that raises it so that at
+most (1 - GATE_QUANTILE) of the windows can be positive. Short recordings keep
+the v1.3.1 setting.
 
 Run from the repository root:  python -m pytest tests
 """
@@ -16,8 +17,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "algo"))
 from mvafa_szcore.inference import (  # noqa: E402
-    GATE_MIN_RECORDING_SEC, GATE_QUANTILE, SMOOTH_K, STEP_SEC, THRESHOLD, WINDOW_SEC,
-    _smooth, gate_threshold, probs_to_events)
+    GATE_MIN_RECORDING_SEC, GATE_QUANTILE, LONG_SMOOTH_K, LONG_THRESHOLD, STEP_SEC,
+    THRESHOLD, WINDOW_SEC, _smooth, gate_threshold, probs_to_events)
 
 N_LONG = int(2 * GATE_MIN_RECORDING_SEC / STEP_SEC)
 
@@ -49,31 +50,37 @@ def test_gate_bounds_false_alarms_on_high_background():
     assert sum(b - a for a, b in fixed) > 0.9 * rec
     assert len(gated) == 1
     onset, offset = gated[0]
-    margin = SMOOTH_K * STEP_SEC
+    margin = LONG_SMOOTH_K * STEP_SEC
     assert starts[burst[0]] - margin <= onset < offset <= starts[burst[1] - 1] + WINDOW_SEC + margin
 
 
-def test_gate_is_off_for_short_or_unknown_recordings():
+@pytest.mark.parametrize("seed", range(3))
+@pytest.mark.parametrize("background", [0.2, 0.65, 0.8])
+def test_short_recordings_keep_v131_setting(seed, background):
+    """Under 60 min (every TUH-Sz file) or of unknown length: threshold 0.70,
+    smoothing 7, no gate, as in v1.3.1."""
     n = int(GATE_MIN_RECORDING_SEC / STEP_SEC) - 1
-    probs, starts = _recording(n, THRESHOLD + 0.08, seed=1)
-    smoothed = _smooth(probs, SMOOTH_K)
+    probs, starts = _recording(n, background, seed=seed, burst=(100, 140))
     short = GATE_MIN_RECORDING_SEC - 1.0
+    v131 = probs_to_events(probs, starts, WINDOW_SEC, threshold=0.70, smooth_k=7,
+                           gate_quantile=None)
 
-    assert gate_threshold(smoothed, THRESHOLD, short) == THRESHOLD
-    assert gate_threshold(smoothed, THRESHOLD, None) == THRESHOLD
-    assert (probs_to_events(probs, starts, WINDOW_SEC, recording_sec=short)
-            == probs_to_events(probs, starts, WINDOW_SEC))
+    assert gate_threshold(_smooth(probs, 7), 0.70, short) == 0.70
+    assert gate_threshold(_smooth(probs, 7), 0.70, None) == 0.70
+    assert probs_to_events(probs, starts, WINDOW_SEC, recording_sec=short) == v131
+    assert probs_to_events(probs, starts, WINDOW_SEC) == v131
 
 
 @pytest.mark.parametrize("seed", range(5))
 @pytest.mark.parametrize("background", [0.2, 0.6, 0.8])
 def test_gate_only_removes_events(seed, background):
-    """The gate never lowers the threshold, so every gated event lies inside
-    an event of the fixed threshold."""
+    """On long recordings the gate never lowers LONG_THRESHOLD, so every gated
+    event lies inside an event of the ungated long-recording setting."""
     probs, starts = _recording(N_LONG, background, seed=seed, burst=(100, 140))
-    smoothed = _smooth(probs, SMOOTH_K)
-    assert gate_threshold(smoothed, THRESHOLD, N_LONG * STEP_SEC) >= THRESHOLD
+    rec = N_LONG * STEP_SEC
+    assert gate_threshold(_smooth(probs, LONG_SMOOTH_K), LONG_THRESHOLD, rec) >= LONG_THRESHOLD
 
-    fixed = probs_to_events(probs, starts, WINDOW_SEC)
-    gated = probs_to_events(probs, starts, WINDOW_SEC, recording_sec=N_LONG * STEP_SEC)
-    assert all(_inside(e, fixed) for e in gated)
+    ungated = probs_to_events(probs, starts, WINDOW_SEC, threshold=LONG_THRESHOLD,
+                              smooth_k=LONG_SMOOTH_K)
+    gated = probs_to_events(probs, starts, WINDOW_SEC, recording_sec=rec)
+    assert all(_inside(e, ungated) for e in gated)
